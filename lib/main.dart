@@ -1,125 +1,458 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (context) => MoodProvider(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Mood Diary',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const HomeScreen(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class MoodEntry {
+  final DateTime date;
+  final String mood;
+  final String note;
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  MoodEntry({
+    required this.date,
+    required this.mood,
+    required this.note,
+  });
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class MoodProvider extends ChangeNotifier {
+  final List<MoodEntry> _entries = [];
+  DateTime _selectedDate = DateTime.now();
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  List<MoodEntry> get entries => _entries;
+  DateTime get selectedDate => _selectedDate;
+
+  void addEntry(MoodEntry entry) {
+    _entries.add(entry);
+    notifyListeners();
+  }
+
+  void setSelectedDate(DateTime date) {
+    _selectedDate = date;
+    notifyListeners();
+  }
+
+  MoodEntry? getEntryForDate(DateTime date) {
+    try {
+      return _entries.firstWhere(
+        (entry) => isSameDay(entry.date, date),
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  bool isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+}
+
+class HomeScreen extends StatelessWidget {
+  const HomeScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Mood Diary'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.analytics),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const StatsScreen()),
+            ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          _buildCalendarHeader(),
+          _buildCalendarGrid(),
+          const SizedBox(height: 20),
+          _buildSelectedDayInfo(),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        child: const Icon(Icons.add),
+        onPressed: () => _showAddMoodBottomSheet(context),
+      ),
+    );
+  }
+
+  Widget _buildCalendarHeader() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Consumer<MoodProvider>(
+        builder: (context, provider, child) {
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                DateFormat('MMMM yyyy').format(provider.selectedDate),
+                style:
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: () => provider.setSelectedDate(
+                      DateTime(provider.selectedDate.year,
+                          provider.selectedDate.month - 1),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: () => provider.setSelectedDate(
+                      DateTime(provider.selectedDate.year,
+                          provider.selectedDate.month + 1),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCalendarGrid() {
+    return Consumer<MoodProvider>(
+      builder: (context, provider, child) {
+        final firstDay = DateTime(
+            provider.selectedDate.year, provider.selectedDate.month, 1);
+        final lastDay = DateTime(
+            provider.selectedDate.year, provider.selectedDate.month + 1, 0);
+        final daysInMonth = lastDay.day;
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+          ),
+          itemCount: daysInMonth,
+          itemBuilder: (context, index) {
+            final currentDate = DateTime(provider.selectedDate.year,
+                provider.selectedDate.month, index + 1);
+            final entry = provider.getEntryForDate(currentDate);
+
+            return GestureDetector(
+              onTap: () => provider.setSelectedDate(currentDate),
+              child: Container(
+                margin: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: entry != null
+                      ? _getMoodColor(entry.mood).withOpacity(0.3)
+                      : null,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color:
+                        provider.isSameDay(currentDate, provider.selectedDate)
+                            ? Colors.blue
+                            : Colors.grey,
+                  ),
+                ),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '${index + 1}',
+                        style: TextStyle(
+                          color: entry != null
+                              ? _getMoodColor(entry.mood)
+                              : Colors.black,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (entry != null) Text(entry.mood),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildSelectedDayInfo() {
+    return Consumer<MoodProvider>(
+      builder: (context, provider, child) {
+        final entry = provider.getEntryForDate(provider.selectedDate);
+
+        return Column(
+          children: [
+            Text(
+              DateFormat('EEEE, MMM d').format(provider.selectedDate),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            if (entry != null) ...[
+              Text('Mood: ${entry.mood}', style: const TextStyle(fontSize: 16)),
+              Text('Note: ${entry.note}', style: const TextStyle(fontSize: 16)),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  void _showAddMoodBottomSheet(BuildContext context) {
+    String selectedMood = '😊';
+    final textController = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('How are you feeling today?',
+                    style: TextStyle(fontSize: 20)),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildMoodButton(
+                        '😊', selectedMood, () => selectedMood = '😊'),
+                    _buildMoodButton(
+                        '😢', selectedMood, () => selectedMood = '😢'),
+                    _buildMoodButton(
+                        '😠', selectedMood, () => selectedMood = '😠'),
+                    _buildMoodButton(
+                        '😴', selectedMood, () => selectedMood = '😴'),
+                    _buildMoodButton(
+                        '🎉', selectedMood, () => selectedMood = '🎉'),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: textController,
+                  decoration: const InputDecoration(
+                    labelText: 'Add a note',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLength: 100,
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final entry = MoodEntry(
+                      date: context.read<MoodProvider>().selectedDate,
+                      mood: selectedMood,
+                      note: textController.text,
+                    );
+                    context.read<MoodProvider>().addEntry(entry);
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Save Entry'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMoodButton(String mood, String selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: mood == selected ? _getMoodColor(mood).withOpacity(0.3) : null,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(mood, style: const TextStyle(fontSize: 32)),
+      ),
+    );
+  }
+
+  Color _getMoodColor(String mood) {
+    switch (mood) {
+      case '😊':
+        return Colors.yellow;
+      case '😢':
+        return Colors.blue;
+      case '😠':
+        return Colors.red;
+      case '😴':
+        return Colors.purple;
+      case '🎉':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+}
+
+class StatsScreen extends StatelessWidget {
+  const StatsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = context.watch<MoodProvider>().entries;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Statistics'),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+      ),
+      body: entries.isEmpty
+          ? const Center(child: Text('No entries yet!'))
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                const Text('Mood Distribution',
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 20),
+                PieChartSample(entries: entries),
+                const SizedBox(height: 20),
+                ..._buildMoodStatistics(entries),
+              ],
+            ),
+    );
+  }
+
+  List<Widget> _buildMoodStatistics(List<MoodEntry> entries) {
+    final moodCounts = <String, int>{};
+
+    for (var entry in entries) {
+      moodCounts[entry.mood] = (moodCounts[entry.mood] ?? 0) + 1;
+    }
+
+    return moodCounts.entries
+        .map((entry) => ListTile(
+              leading: Text(entry.key, style: const TextStyle(fontSize: 24)),
+              title: Text('Count: ${entry.value}'),
+              tileColor: _getMoodColor(entry.key).withOpacity(0.1),
+            ))
+        .toList();
+  }
+
+  Color _getMoodColor(String mood) {
+    switch (mood) {
+      case '😊':
+        return Colors.yellow;
+      case '😢':
+        return Colors.blue;
+      case '😠':
+        return Colors.red;
+      case '😴':
+        return Colors.purple;
+      case '🎉':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+}
+
+class PieChartSample extends StatelessWidget {
+  final List<MoodEntry> entries;
+
+  const PieChartSample({super.key, required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    final moodCounts = <String, int>{};
+    for (var entry in entries) {
+      moodCounts[entry.mood] = (moodCounts[entry.mood] ?? 0) + 1;
+    }
+
+    return Container(
+      height: 200,
+      padding: const EdgeInsets.all(20),
+      child: CustomPaint(
+        painter: PieChartPainter(moodCounts: moodCounts),
+      ),
+    );
+  }
+}
+
+class PieChartPainter extends CustomPainter {
+  final Map<String, int> moodCounts;
+
+  PieChartPainter({required this.moodCounts});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final total = moodCounts.values.fold(0, (a, b) => a + b);
+    final rect = Rect.fromCircle(
+      center: size.center(Offset.zero),
+      radius: size.shortestSide / 2,
+    );
+
+    double startAngle = -0.5 * 3.14159;
+    int index = 0;
+
+    moodCounts.forEach((mood, count) {
+      final sweepAngle = 2 * 3.14159 * (count / total);
+      final paint = Paint()
+        ..color = _getMoodColor(mood)
+        ..style = PaintingStyle.fill;
+
+      canvas.drawArc(rect, startAngle, sweepAngle, true, paint);
+      startAngle += sweepAngle;
+      index++;
     });
   }
 
   @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-    );
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+
+  Color _getMoodColor(String mood) {
+    switch (mood) {
+      case '😊':
+        return Colors.yellow;
+      case '😢':
+        return Colors.blue;
+      case '😠':
+        return Colors.red;
+      case '😴':
+        return Colors.purple;
+      case '🎉':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
   }
 }
